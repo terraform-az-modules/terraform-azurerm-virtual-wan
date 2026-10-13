@@ -3,7 +3,7 @@
   <img src="https://github.com/user-attachments/assets/5b2ab201-5926-46fa-b0a2-07a6f406ab6d" alt="Banner" />
 </p>
 <h1 align="center">
-    Terraform Azure Module Template
+    Terraform Azure Virtual WAN
 </h1>
 
 <p align="center" style="font-size: 1.2rem;">
@@ -65,7 +65,7 @@ This table contains both Prerequisites and Providers:
 
 ## Examples
 
-**IMPORTANT:** Since the master branch used in source varies based on new modifications, we recommend using the [release versions](https://github.com/terraform-az-modules/terraform-module-template/releases).
+**IMPORTANT:** Since the master branch used in source varies based on new modifications, we recommend using the [release versions](https://github.com/terraform-az-modules/terraform-azurerm-virtual-wan/releases).
 
 📌 For additional usage examples, check the complete list under [`examples/`](./examples) directory.
 

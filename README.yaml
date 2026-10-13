@@ -1,49 +1,75 @@
----
-#
-# This is the canonical configuration for the `README.md`
-# Run `make readme` to rebuild the `README.md`
-#
+name: Terraform Azure Virtual WAN
 
-# Name of this project
-name : Terraform Azure Module Template
+intro: |-
+  With our comprehensive DevOps toolkit - streamline operations, automate workflows, enhance collaboration and deploy with confidence.
 
-# License of this project
+badges_text: "Latest Release | tfsec | License | Changelog"
+
+about: |-
+  Terraform module to create and manage Azure Virtual WAN: the WAN, virtual hubs, site to site VPN and ExpressRoute gateways, VPN sites and connections, hub virtual network connections and hub static routes.
+
 license: "APACHE"
 
-# Canonical GitHub repo
-github_repo: terraform-az-modules/terraform-module-template
+github_repo: terraform-az-modules/terraform-azurerm-virtual-wan
 
-# Badges to display
 badges:
   - name: "Terraform"
-    image: "https://img.shields.io/badge/Terraform-v0.13-green"
+    image: "https://img.shields.io/badge/Terraform-v1.10.0-green"
     url: "https://www.terraform.io"
+
   - name: "Licence"
     image: "https://img.shields.io/badge/License-APACHE-blue.svg"
     url: "LICENSE.md"
-  - name: "Changelog"
-    image: "https://img.shields.io/badge/Changelog-blue"
-    url: "CHANGELOG.md"
 
-# Prerequesties to display
-prerequesties:
+prerequisites:
   - name: Terraform
     url: https://learn.hashicorp.com/terraform/getting-started/install.html
-    version: ">= 1.6.6"
+    version: ">= 1.10.0"
 
 providers:
-  - name: azure
-    url: https://azure.microsoft.com/
-    version: ">= 3.116.0"
+  - name: azurerm
+    url: https://registry.terraform.io/providers/hashicorp/azurerm/latest
+    version: ">= 4.0"
 
-#  description of this project
 description: |-
-  Terraform Azure Module Template to create new modules using this as baseline
+  Terraform module to create and manage Azure Virtual WAN: the WAN, virtual hubs, site to site VPN and ExpressRoute gateways, VPN sites and connections, hub virtual network connections and hub static routes.
 
-# How to use this project
-# How to use this project
 usage: |-
-  Here are some examples of how you can use this module in your inventory structure:
+  ### Example
+
   ```hcl
-    locals {}
-    ```
+  module "virtual_wan" {
+    source              = "terraform-az-modules/virtual-wan/azurerm"
+    name                = "core"
+    environment         = "shared"
+    location            = "westus3"
+    resource_group_name = module.resource_group.resource_group_name
+
+    hubs = {
+      westus3 = {
+        location            = "westus3"
+        address_prefix      = "10.10.0.0/23"
+        vpn_gateway_enabled = true
+      }
+    }
+
+    vpn_sites = {
+      santa-monica = {
+        hub   = "westus3"
+        links = [{ name = "primary", ip_address = "203.0.113.10", bgp = { asn = 65010, peering_address = "169.254.21.1" } }]
+      }
+    }
+
+    vnet_connections = {
+      landing-zone-westus3 = {
+        hub                       = "westus3"
+        remote_virtual_network_id = module.vnet.vnet_id
+        static_routes = [{
+          name                = "spokes-via-firewall"
+          address_prefixes    = ["172.20.0.0/18", "172.21.0.0/18"]
+          next_hop_ip_address = "10.10.5.4"
+        }]
+      }
+    }
+  }
+  ```
