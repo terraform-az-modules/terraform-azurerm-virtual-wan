@@ -7,6 +7,13 @@ locals {
   hubs             = var.enable ? var.hubs : {}
   vpn_sites        = var.enable ? var.vpn_sites : {}
   vnet_connections = var.enable ? var.vnet_connections : {}
+  palo_alto_cloud_ngfw_hubs = var.enable ? {
+    for k, v in var.palo_alto_cloud_ngfw : k => merge(local.hubs[k], v)
+    if contains(keys(local.hubs), k)
+  } : {}
+  palo_alto_local_rulestack_hubs = {
+    for k, v in local.palo_alto_cloud_ngfw_hubs : k => v if v.management_mode == "local_rulestack"
+  }
 
   vpn_hubs           = { for k, h in local.hubs : k => h if h.vpn_gateway_enabled }
   express_route_hubs = { for k, h in local.hubs : k => h if h.express_route_gateway_enabled }
