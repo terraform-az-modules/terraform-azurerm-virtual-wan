@@ -54,7 +54,11 @@ resource "azurerm_virtual_hub" "main" {
   address_prefix         = each.value.address_prefix
   sku                    = var.virtual_wan_type
   hub_routing_preference = each.value.hub_routing_preference
-  tags                   = module.hub_labels[each.key].tags
+  # Azure requires the SaaS preview feature tag before creating the Palo Alto hub appliance.
+  tags = merge(
+    module.hub_labels[each.key].tags,
+    contains(keys(local.palo_alto_cloud_ngfw_hubs), each.key) ? { hubSaaSPreview = "true" } : {}
+  )
 }
 
 ##-----------------------------------------------------------------------------
@@ -160,7 +164,11 @@ resource "azurerm_virtual_hub_connection" "main" {
   remote_virtual_network_id = each.value.remote_virtual_network_id
   internet_security_enabled = each.value.internet_security_enabled
 
+  # Always managed, so removing static_routes also removes them in Azure. Without
+  # static routes the block names the hub default route table (an empty block is
+  # rejected); that is also the association Routing Intent uses.
   routing {
+    associated_route_table_id                   = length(each.value.static_routes) > 0 ? null : azurerm_virtual_hub.main[each.value.hub].default_route_table_id
     static_vnet_propagate_static_routes_enabled = each.value.propagate_static_routes
 
     dynamic "static_vnet_route" {
