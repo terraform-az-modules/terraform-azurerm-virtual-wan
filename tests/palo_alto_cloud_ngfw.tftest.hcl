@@ -51,6 +51,7 @@ variables {
           backend_public_ip_address = "10.20.8.4"
         }
       }
+      dns_settings = { dns_servers = ["10.20.4.100"] }
       routing_policies = [
         { name = "InternetTrafficPolicy", destinations = ["Internet"] },
         { name = "PrivateTrafficPolicy", destinations = ["PrivateTraffic"] },
@@ -81,6 +82,24 @@ run "cloud_ngfw_in_hub" {
   assert {
     condition     = length(azapi_resource_action.palo_alto_cloud_ngfw_log_profile) == 1
     error_message = "Expected the log profile action when log_settings is set."
+  }
+}
+
+run "connection_without_static_routes" {
+  command = plan
+
+  variables {
+    vnet_connections = {
+      lz = {
+        hub                       = "eastus"
+        remote_virtual_network_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet-lz"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(azurerm_virtual_hub_connection.main["lz"].routing) == 0
+    error_message = "A connection without static routes keeps the hub default routing."
   }
 }
 

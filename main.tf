@@ -164,15 +164,20 @@ resource "azurerm_virtual_hub_connection" "main" {
   remote_virtual_network_id = each.value.remote_virtual_network_id
   internet_security_enabled = each.value.internet_security_enabled
 
-  routing {
-    static_vnet_propagate_static_routes_enabled = each.value.propagate_static_routes
+  # Only with static routes: an empty routing block is rejected, and without it
+  # the connection keeps the hub defaults (what Routing Intent expects).
+  dynamic "routing" {
+    for_each = length(each.value.static_routes) > 0 ? [each.value] : []
+    content {
+      static_vnet_propagate_static_routes_enabled = routing.value.propagate_static_routes
 
-    dynamic "static_vnet_route" {
-      for_each = each.value.static_routes
-      content {
-        name                = static_vnet_route.value.name
-        address_prefixes    = static_vnet_route.value.address_prefixes
-        next_hop_ip_address = static_vnet_route.value.next_hop_ip_address
+      dynamic "static_vnet_route" {
+        for_each = routing.value.static_routes
+        content {
+          name                = static_vnet_route.value.name
+          address_prefixes    = static_vnet_route.value.address_prefixes
+          next_hop_ip_address = static_vnet_route.value.next_hop_ip_address
+        }
       }
     }
   }
@@ -394,8 +399,9 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack
   dynamic "dns_settings" {
     for_each = each.value.dns_settings == null ? [] : [each.value.dns_settings]
     content {
-      dns_servers   = dns_settings.value.dns_servers
-      use_azure_dns = dns_settings.value.use_azure_dns
+      dns_servers = dns_settings.value.dns_servers
+      # The provider rejects use_azure_dns next to dns_servers, even as false.
+      use_azure_dns = dns_settings.value.use_azure_dns ? true : null
     }
   }
 
@@ -449,8 +455,9 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama" "clou
   dynamic "dns_settings" {
     for_each = each.value.dns_settings == null ? [] : [each.value.dns_settings]
     content {
-      dns_servers   = dns_settings.value.dns_servers
-      use_azure_dns = dns_settings.value.use_azure_dns
+      dns_servers = dns_settings.value.dns_servers
+      # The provider rejects use_azure_dns next to dns_servers, even as false.
+      use_azure_dns = dns_settings.value.use_azure_dns ? true : null
     }
   }
 
@@ -494,8 +501,9 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_ma
   dynamic "dns_settings" {
     for_each = each.value.dns_settings == null ? [] : [each.value.dns_settings]
     content {
-      dns_servers   = dns_settings.value.dns_servers
-      use_azure_dns = dns_settings.value.use_azure_dns
+      dns_servers = dns_settings.value.dns_servers
+      # The provider rejects use_azure_dns next to dns_servers, even as false.
+      use_azure_dns = dns_settings.value.use_azure_dns ? true : null
     }
   }
 
