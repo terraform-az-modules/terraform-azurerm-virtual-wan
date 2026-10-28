@@ -98,8 +98,8 @@ run "connection_without_static_routes" {
   }
 
   assert {
-    condition     = length(azurerm_virtual_hub_connection.main["lz"].routing) == 0
-    error_message = "A connection without static routes keeps the hub default routing."
+    condition     = length(azurerm_virtual_hub_connection.main["lz"].routing[0].static_vnet_route) == 0
+    error_message = "A connection without static routes must manage (and so clear) its static routes."
   }
 }
 

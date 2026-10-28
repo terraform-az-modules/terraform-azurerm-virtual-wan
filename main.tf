@@ -164,20 +164,19 @@ resource "azurerm_virtual_hub_connection" "main" {
   remote_virtual_network_id = each.value.remote_virtual_network_id
   internet_security_enabled = each.value.internet_security_enabled
 
-  # Only with static routes: an empty routing block is rejected, and without it
-  # the connection keeps the hub defaults (what Routing Intent expects).
-  dynamic "routing" {
-    for_each = length(each.value.static_routes) > 0 ? [each.value] : []
-    content {
-      static_vnet_propagate_static_routes_enabled = routing.value.propagate_static_routes
+  # Always managed, so removing static_routes also removes them in Azure. Without
+  # static routes the block names the hub default route table (an empty block is
+  # rejected); that is also the association Routing Intent uses.
+  routing {
+    associated_route_table_id                   = length(each.value.static_routes) > 0 ? null : azurerm_virtual_hub.main[each.value.hub].default_route_table_id
+    static_vnet_propagate_static_routes_enabled = each.value.propagate_static_routes
 
-      dynamic "static_vnet_route" {
-        for_each = routing.value.static_routes
-        content {
-          name                = static_vnet_route.value.name
-          address_prefixes    = static_vnet_route.value.address_prefixes
-          next_hop_ip_address = static_vnet_route.value.next_hop_ip_address
-        }
+    dynamic "static_vnet_route" {
+      for_each = each.value.static_routes
+      content {
+        name                = static_vnet_route.value.name
+        address_prefixes    = static_vnet_route.value.address_prefixes
+        next_hop_ip_address = static_vnet_route.value.next_hop_ip_address
       }
     }
   }
@@ -556,10 +555,13 @@ resource "azurerm_virtual_hub_routing_intent" "palo_alto_cloud_ngfw" {
     }
   }
 
+  # After the firewalls, and after the connections have dropped any static routes
+  # (Azure checks for them when Routing Intent is created).
   depends_on = [
     azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack.cloud_ngfw,
     azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama.cloud_ngfw,
     azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_manager.cloud_ngfw,
+    azurerm_virtual_hub_connection.main,
   ]
 }
 
