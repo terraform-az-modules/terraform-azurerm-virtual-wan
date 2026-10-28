@@ -174,6 +174,211 @@ variable "vnet_connections" {
 }
 
 ##-----------------------------------------------------------------------------
+# Palo Alto Cloud NGFW
+##-----------------------------------------------------------------------------
+variable "palo_alto_cloud_ngfw" {
+  type = map(object({
+    management_mode = optional(string, "local_rulestack")
+    rulestack = optional(object({
+      description           = optional(string)
+      anti_spyware_profile  = optional(string)
+      anti_virus_profile    = optional(string)
+      file_blocking_profile = optional(string)
+      url_filtering_profile = optional(string)
+      vulnerability_profile = optional(string)
+      dns_subscription      = optional(string)
+    }))
+    prefix_lists = optional(map(object({
+      prefixes      = list(string)
+      description   = optional(string)
+      audit_comment = optional(string)
+    })), {})
+    fqdn_lists = optional(map(object({
+      fqdns         = list(string)
+      description   = optional(string)
+      audit_comment = optional(string)
+    })), {})
+    certificates = optional(map(object({
+      self_signed              = optional(bool)
+      key_vault_certificate_id = optional(string)
+      description              = optional(string)
+      audit_comment            = optional(string)
+    })), {})
+    outbound_trust_certificate_name   = optional(string)
+    outbound_untrust_certificate_name = optional(string)
+    panorama_base64_config            = optional(string)
+    strata_cloud_manager_tenant_name  = optional(string)
+    identity = optional(object({
+      type         = string
+      identity_ids = list(string)
+    }))
+    marketplace_offer_id = optional(string)
+    plan_id              = optional(string)
+    rules = optional(map(object({
+      priority     = number
+      action       = string
+      applications = list(string)
+      source = object({
+        cidrs                           = optional(list(string))
+        countries                       = optional(list(string))
+        feeds                           = optional(list(string))
+        local_rulestack_prefix_list_ids = optional(list(string))
+      })
+      destination = object({
+        cidrs                           = optional(list(string))
+        countries                       = optional(list(string))
+        feeds                           = optional(list(string))
+        local_rulestack_fqdn_list_ids   = optional(list(string))
+        local_rulestack_prefix_list_ids = optional(list(string))
+      })
+      protocol                    = optional(string)
+      protocol_ports              = optional(list(string))
+      description                 = optional(string)
+      enabled                     = optional(bool, true)
+      logging_enabled             = optional(bool, true)
+      negate_source               = optional(bool, false)
+      negate_destination          = optional(bool, false)
+      audit_comment               = optional(string)
+      decryption_rule_type        = optional(string, "None")
+      inspection_certificate_id   = optional(string)
+      inspection_certificate_name = optional(string)
+      category = optional(object({
+        custom_urls = optional(list(string), [])
+        feeds       = optional(list(string), [])
+      }))
+    })), {})
+    additional_public_ip_address_ids = optional(list(string), [])
+    egress_nat_ip_address_ids        = optional(list(string), [])
+    trusted_address_ranges           = optional(list(string), [])
+    dns_settings = optional(object({
+      dns_servers   = optional(list(string))
+      use_azure_dns = optional(bool, false)
+    }))
+    destination_nat = optional(map(object({
+      protocol                  = string
+      frontend_port             = number
+      public_ip_address_id      = optional(string)
+      backend_port              = number
+      backend_public_ip_address = string
+    })), {})
+    routing_policies = optional(list(object({
+      name         = string
+      destinations = list(string)
+    })), [])
+    log_settings = optional(object({
+      log_type = optional(string)
+    }))
+  }))
+  default     = {}
+  description = "Optional Azure managed Palo Alto Cloud NGFW per hub. Configure a local rulestack, its rules, and Routing Intent policies. The map key must reference a hub in hubs. `destination_nat.public_ip_address_id` defaults to the module's public IP; any other frontend must be listed in `additional_public_ip_address_ids`. `log_settings` sends firewall logs to `log_analytics_workspace_id` (read with the default azurerm provider) through the saveLogProfile action."
+
+  validation {
+    condition = alltrue([
+      for hub, config in var.palo_alto_cloud_ngfw :
+      contains(keys(var.hubs), hub) && contains(["local_rulestack", "panorama", "strata_cloud_manager"], config.management_mode) &&
+      (config.management_mode != "local_rulestack" || config.rulestack != null) &&
+      (config.management_mode == "local_rulestack" || config.rulestack == null) &&
+      (config.management_mode != "panorama" || config.panorama_base64_config != null) &&
+      (config.management_mode != "strata_cloud_manager" || config.strata_cloud_manager_tenant_name != null) &&
+      (config.identity == null || config.management_mode == "strata_cloud_manager") &&
+      (config.management_mode == "local_rulestack" || (length(config.rules) == 0 && length(config.prefix_lists) == 0 && length(config.fqdn_lists) == 0 && length(config.certificates) == 0 && config.outbound_trust_certificate_name == null && config.outbound_untrust_certificate_name == null))
+    ])
+    error_message = "Each palo_alto_cloud_ngfw entry must reference a hub and provide the configuration required by its management_mode."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        for _, certificate in config.certificates : (certificate.self_signed != null) != (certificate.key_vault_certificate_id != null)
+      ]
+    ]))
+    error_message = "Each Palo Alto certificate must set exactly one of self_signed or key_vault_certificate_id."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, config in var.palo_alto_cloud_ngfw :
+      (config.outbound_trust_certificate_name == null || contains(keys(config.certificates), config.outbound_trust_certificate_name)) &&
+      (config.outbound_untrust_certificate_name == null || contains(keys(config.certificates), config.outbound_untrust_certificate_name))
+    ])
+    error_message = "Outbound trust and untrust certificate names must refer to certificates in the same hub configuration."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        for _, rule in config.rules :
+        (rule.inspection_certificate_name == null || contains(keys(config.certificates), rule.inspection_certificate_name)) &&
+        !(rule.inspection_certificate_name != null && rule.inspection_certificate_id != null)
+      ]
+    ]))
+    error_message = "Inspection certificate names must reference a certificate in the same hub and cannot be combined with inspection_certificate_id."
+  }
+
+  validation {
+    condition     = length(var.palo_alto_cloud_ngfw) == 0 || var.virtual_wan_type == "Standard"
+    error_message = "Palo Alto Cloud NGFW requires virtual_wan_type = Standard."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, config in var.palo_alto_cloud_ngfw :
+      config.dns_settings == null ||
+      (config.dns_settings.use_azure_dns ? length(coalesce(config.dns_settings.dns_servers, [])) == 0 : length(coalesce(config.dns_settings.dns_servers, [])) > 0)
+    ])
+    error_message = "When Palo Alto DNS settings are configured, set use_azure_dns=true or provide one or more dns_servers, but not both."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        for _, rule in config.rules : (rule.protocol != null) != (rule.protocol_ports != null)
+      ]
+    ]))
+    error_message = "Each Palo Alto rule must set exactly one of protocol or protocol_ports."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        for policy in config.routing_policies : contains(["InternetTrafficPolicy", "PrivateTrafficPolicy"], policy.name)
+      ]
+    ]))
+    error_message = "Palo Alto Routing Intent policy names must be InternetTrafficPolicy or PrivateTrafficPolicy."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        length(distinct([for policy in config.routing_policies : policy.name])) == length(config.routing_policies),
+        [for policy in config.routing_policies : policy.destinations == tolist(policy.name == "InternetTrafficPolicy" ? ["Internet"] : ["PrivateTraffic"])],
+      ]
+    ]))
+    error_message = "Use each Routing Intent policy once per hub: InternetTrafficPolicy with destinations [\"Internet\"], PrivateTrafficPolicy with [\"PrivateTraffic\"]."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        for _, nat in config.destination_nat : nat.public_ip_address_id == null || contains(config.additional_public_ip_address_ids, nat.public_ip_address_id)
+      ]
+    ]))
+    error_message = "A destination_nat public_ip_address_id must be omitted (module public IP) or listed in additional_public_ip_address_ids."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, config in var.palo_alto_cloud_ngfw :
+      config.log_settings == null || (
+        var.log_analytics_workspace_id != null &&
+        (config.log_settings.log_type == null || contains(["TRAFFIC", "THREAT", "DECRYPTION", "WILDFIRE", "DLP", "AUDIT"], config.log_settings.log_type))
+      )
+    ])
+    error_message = "log_settings needs log_analytics_workspace_id, and log_type must be one of TRAFFIC, THREAT, DECRYPTION, WILDFIRE, DLP or AUDIT."
+  }
+}
+
+##-----------------------------------------------------------------------------
 # Diagnostics
 ##-----------------------------------------------------------------------------
 variable "diagnostic_setting_enable" {
@@ -185,5 +390,5 @@ variable "diagnostic_setting_enable" {
 variable "log_analytics_workspace_id" {
   type        = string
   default     = null
-  description = "Log Analytics workspace ID for the gateway diagnostic settings."
+  description = "Log Analytics workspace ID for the gateway diagnostic settings and the Palo Alto Cloud NGFW log profile."
 }
