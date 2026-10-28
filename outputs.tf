@@ -42,11 +42,7 @@ output "vnet_connection_ids" {
 }
 
 output "palo_alto_cloud_ngfw_ids" {
-  value = merge(
-    { for k, fw in azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack.cloud_ngfw : k => fw.id },
-    { for k, fw in azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama.cloud_ngfw : k => fw.id },
-    { for k, fw in azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_manager.cloud_ngfw : k => fw.id },
-  )
+  value       = local.palo_alto_cloud_ngfw_ids
   description = "Map of hub keys to Palo Alto Cloud NGFW firewall IDs across supported management modes."
 }
 
@@ -68,6 +64,16 @@ output "palo_alto_local_rulestack_ids" {
 output "palo_alto_cloud_ngfw_public_ip_ids" {
   value       = { for k, pip in azurerm_public_ip.palo_alto_cloud_ngfw : k => pip.id }
   description = "Map of hub keys to the Palo Alto Cloud NGFW ingress public IP IDs."
+}
+
+output "palo_alto_cloud_ngfw_public_ip_addresses" {
+  value       = { for k, pip in azurerm_public_ip.palo_alto_cloud_ngfw : k => pip.ip_address }
+  description = "Map of hub keys to the Palo Alto Cloud NGFW public IP addresses: the source of internet egress, for partner allow-lists."
+}
+
+output "palo_alto_cloud_ngfw_log_profile_ids" {
+  value       = { for k, action in azapi_resource_action.palo_alto_cloud_ngfw_log_profile : k => action.id }
+  description = "Map of hub keys to the IDs of the saveLogProfile actions, for hubs with log_settings."
 }
 
 output "palo_alto_cloud_ngfw_routing_intent_ids" {

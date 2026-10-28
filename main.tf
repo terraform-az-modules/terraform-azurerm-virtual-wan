@@ -320,9 +320,9 @@ resource "azurerm_palo_alto_local_rulestack_rule" "cloud_ngfw" {
   dynamic "source" {
     for_each = [each.value.source]
     content {
-      cidrs                           = source.value.cidrs
-      countries                       = source.value.countries
-      feeds                           = source.value.feeds
+      cidrs     = source.value.cidrs
+      countries = source.value.countries
+      feeds     = source.value.feeds
       local_rulestack_prefix_list_ids = source.value.local_rulestack_prefix_list_ids == null ? null : [
         for list_id in source.value.local_rulestack_prefix_list_ids : try(
           azurerm_palo_alto_local_rulestack_prefix_list.cloud_ngfw["${each.value.hub}.${list_id}"].id,
@@ -336,9 +336,9 @@ resource "azurerm_palo_alto_local_rulestack_rule" "cloud_ngfw" {
   dynamic "destination" {
     for_each = [each.value.destination]
     content {
-      cidrs                           = destination.value.cidrs
-      countries                       = destination.value.countries
-      feeds                           = destination.value.feeds
+      cidrs     = destination.value.cidrs
+      countries = destination.value.countries
+      feeds     = destination.value.feeds
       local_rulestack_fqdn_list_ids = destination.value.local_rulestack_fqdn_list_ids == null ? null : [
         for list_id in destination.value.local_rulestack_fqdn_list_ids : try(
           azurerm_palo_alto_local_rulestack_fqdn_list.cloud_ngfw["${each.value.hub}.${list_id}"].id,
@@ -384,7 +384,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack
   plan_id              = each.value.plan_id
 
   network_profile {
-    public_ip_address_ids        = [azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id]
+    public_ip_address_ids        = concat([azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id], each.value.additional_public_ip_address_ids)
     virtual_hub_id               = azurerm_virtual_hub.main[each.key].id
     network_virtual_appliance_id = azurerm_palo_alto_virtual_network_appliance.cloud_ngfw[each.key].id
     egress_nat_ip_address_ids    = each.value.egress_nat_ip_address_ids
@@ -407,7 +407,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack
 
       frontend_config {
         port                 = destination_nat.value.frontend_port
-        public_ip_address_id = destination_nat.value.public_ip_address_id
+        public_ip_address_id = coalesce(destination_nat.value.public_ip_address_id, azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id)
       }
 
       backend_config {
@@ -439,7 +439,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama" "clou
   tags                   = module.hub_labels[each.key].tags
 
   network_profile {
-    public_ip_address_ids        = [azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id]
+    public_ip_address_ids        = concat([azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id], each.value.additional_public_ip_address_ids)
     virtual_hub_id               = azurerm_virtual_hub.main[each.key].id
     network_virtual_appliance_id = azurerm_palo_alto_virtual_network_appliance.cloud_ngfw[each.key].id
     egress_nat_ip_address_ids    = each.value.egress_nat_ip_address_ids
@@ -461,7 +461,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama" "clou
       protocol = destination_nat.value.protocol
       frontend_config {
         port                 = destination_nat.value.frontend_port
-        public_ip_address_id = destination_nat.value.public_ip_address_id
+        public_ip_address_id = coalesce(destination_nat.value.public_ip_address_id, azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id)
       }
       backend_config {
         port              = destination_nat.value.backend_port
@@ -484,7 +484,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_ma
   tags                             = module.hub_labels[each.key].tags
 
   network_profile {
-    public_ip_address_ids        = [azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id]
+    public_ip_address_ids        = concat([azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id], each.value.additional_public_ip_address_ids)
     virtual_hub_id               = azurerm_virtual_hub.main[each.key].id
     network_virtual_appliance_id = azurerm_palo_alto_virtual_network_appliance.cloud_ngfw[each.key].id
     egress_nat_ip_address_ids    = each.value.egress_nat_ip_address_ids
@@ -506,7 +506,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_ma
       protocol = destination_nat.value.protocol
       frontend_config {
         port                 = destination_nat.value.frontend_port
-        public_ip_address_id = destination_nat.value.public_ip_address_id
+        public_ip_address_id = coalesce(destination_nat.value.public_ip_address_id, azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id)
       }
       backend_config {
         port              = destination_nat.value.backend_port
@@ -539,11 +539,62 @@ resource "azurerm_virtual_hub_routing_intent" "palo_alto_cloud_ngfw" {
     }
   }
 
+  lifecycle {
+    # Azure rejects Routing Intent while the hub default route table holds static
+    # routes with a VNet connection as next hop; fail at plan time instead.
+    precondition {
+      condition     = length([for k, c in local.advertised_connections : k if c.hub == each.key]) == 0
+      error_message = "Routing Intent on hub '${each.key}' cannot coexist with advertised static routes. Remove static_routes, or set advertise_static_routes = false, on its vnet_connections."
+    }
+  }
+
   depends_on = [
     azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack.cloud_ngfw,
     azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama.cloud_ngfw,
     azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_manager.cloud_ngfw,
   ]
+}
+
+##-----------------------------------------------------------------------------
+# Palo Alto Cloud NGFW log profile
+##-----------------------------------------------------------------------------
+# azurerm has no argument for the firewall log profile; it is set through the
+# saveLogProfile action. The workspace keys are read here and sent write-only.
+data "azurerm_log_analytics_workspace" "palo_alto_cloud_ngfw" {
+  count               = length(local.palo_alto_log_profile_hubs) > 0 ? 1 : 0
+  name                = element(split("/", var.log_analytics_workspace_id), 8)
+  resource_group_name = element(split("/", var.log_analytics_workspace_id), 4)
+}
+
+resource "azapi_resource_action" "palo_alto_cloud_ngfw_log_profile" {
+  for_each    = local.palo_alto_log_profile_hubs
+  type        = "PaloAltoNetworks.Cloudngfw/firewalls@2025-05-23"
+  resource_id = local.palo_alto_cloud_ngfw_ids[each.key]
+  action      = "saveLogProfile"
+  method      = "POST"
+
+  body = merge(
+    {
+      logOption = "SAME_DESTINATION"
+      commonDestination = {
+        monitorConfigurations = {
+          id             = var.log_analytics_workspace_id
+          workspace      = data.azurerm_log_analytics_workspace.palo_alto_cloud_ngfw[0].workspace_id
+          subscriptionId = element(split("/", var.log_analytics_workspace_id), 2)
+        }
+      }
+    },
+    each.value.log_settings.log_type == null ? {} : { logType = each.value.log_settings.log_type }
+  )
+
+  sensitive_body = {
+    commonDestination = {
+      monitorConfigurations = {
+        primaryKey   = data.azurerm_log_analytics_workspace.palo_alto_cloud_ngfw[0].primary_shared_key
+        secondaryKey = data.azurerm_log_analytics_workspace.palo_alto_cloud_ngfw[0].secondary_shared_key
+      }
+    }
+  }
 }
 
 ##-----------------------------------------------------------------------------

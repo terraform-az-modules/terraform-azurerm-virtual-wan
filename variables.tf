@@ -235,7 +235,7 @@ variable "palo_alto_cloud_ngfw" {
       protocol_ports              = optional(list(string))
       description                 = optional(string)
       enabled                     = optional(bool, true)
-      logging_enabled             = optional(bool, false)
+      logging_enabled             = optional(bool, true)
       negate_source               = optional(bool, false)
       negate_destination          = optional(bool, false)
       audit_comment               = optional(string)
@@ -247,8 +247,9 @@ variable "palo_alto_cloud_ngfw" {
         feeds       = optional(list(string), [])
       }))
     })), {})
-    egress_nat_ip_address_ids = optional(list(string), [])
-    trusted_address_ranges    = optional(list(string), [])
+    additional_public_ip_address_ids = optional(list(string), [])
+    egress_nat_ip_address_ids        = optional(list(string), [])
+    trusted_address_ranges           = optional(list(string), [])
     dns_settings = optional(object({
       dns_servers   = optional(list(string))
       use_azure_dns = optional(bool, false)
@@ -256,7 +257,7 @@ variable "palo_alto_cloud_ngfw" {
     destination_nat = optional(map(object({
       protocol                  = string
       frontend_port             = number
-      public_ip_address_id      = string
+      public_ip_address_id      = optional(string)
       backend_port              = number
       backend_public_ip_address = string
     })), {})
@@ -264,9 +265,12 @@ variable "palo_alto_cloud_ngfw" {
       name         = string
       destinations = list(string)
     })), [])
+    log_settings = optional(object({
+      log_type = optional(string)
+    }))
   }))
   default     = {}
-  description = "Optional Azure managed Palo Alto Cloud NGFW per hub. Configure a local rulestack, its rules, and Routing Intent policies. The map key must reference a hub in hubs."
+  description = "Optional Azure managed Palo Alto Cloud NGFW per hub. Configure a local rulestack, its rules, and Routing Intent policies. The map key must reference a hub in hubs. `destination_nat.public_ip_address_id` defaults to the module's public IP; any other frontend must be listed in `additional_public_ip_address_ids`. `log_settings` sends firewall logs to `log_analytics_workspace_id` (read with the default azurerm provider) through the saveLogProfile action."
 
   validation {
     condition = alltrue([
@@ -342,6 +346,36 @@ variable "palo_alto_cloud_ngfw" {
     ]))
     error_message = "Palo Alto Routing Intent policy names must be InternetTrafficPolicy or PrivateTrafficPolicy."
   }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        length(distinct([for policy in config.routing_policies : policy.name])) == length(config.routing_policies),
+        [for policy in config.routing_policies : policy.destinations == tolist(policy.name == "InternetTrafficPolicy" ? ["Internet"] : ["PrivateTraffic"])],
+      ]
+    ]))
+    error_message = "Use each Routing Intent policy once per hub: InternetTrafficPolicy with destinations [\"Internet\"], PrivateTrafficPolicy with [\"PrivateTraffic\"]."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, config in var.palo_alto_cloud_ngfw : [
+        for _, nat in config.destination_nat : nat.public_ip_address_id == null || contains(config.additional_public_ip_address_ids, nat.public_ip_address_id)
+      ]
+    ]))
+    error_message = "A destination_nat public_ip_address_id must be omitted (module public IP) or listed in additional_public_ip_address_ids."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, config in var.palo_alto_cloud_ngfw :
+      config.log_settings == null || (
+        var.log_analytics_workspace_id != null &&
+        (config.log_settings.log_type == null || contains(["TRAFFIC", "THREAT", "DECRYPTION", "WILDFIRE", "DLP", "AUDIT"], config.log_settings.log_type))
+      )
+    ])
+    error_message = "log_settings needs log_analytics_workspace_id, and log_type must be one of TRAFFIC, THREAT, DECRYPTION, WILDFIRE, DLP or AUDIT."
+  }
 }
 
 ##-----------------------------------------------------------------------------
@@ -356,5 +390,5 @@ variable "diagnostic_setting_enable" {
 variable "log_analytics_workspace_id" {
   type        = string
   default     = null
-  description = "Log Analytics workspace ID for the gateway diagnostic settings."
+  description = "Log Analytics workspace ID for the gateway diagnostic settings and the Palo Alto Cloud NGFW log profile."
 }
