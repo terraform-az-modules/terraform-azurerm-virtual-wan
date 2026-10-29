@@ -195,7 +195,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_local_rulestack
     public_ip_address_ids        = concat([azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id], each.value.additional_public_ip_address_ids)
     virtual_hub_id               = azurerm_virtual_hub.main[each.key].id
     network_virtual_appliance_id = azurerm_palo_alto_virtual_network_appliance.cloud_ngfw[each.key].id
-    egress_nat_ip_address_ids    = each.value.egress_nat_ip_address_ids
+    egress_nat_ip_address_ids    = length(each.value.egress_nat_ip_address_ids) > 0 ? each.value.egress_nat_ip_address_ids : null
     trusted_address_ranges       = each.value.trusted_address_ranges
   }
 
@@ -251,7 +251,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_panorama" "clou
     public_ip_address_ids        = concat([azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id], each.value.additional_public_ip_address_ids)
     virtual_hub_id               = azurerm_virtual_hub.main[each.key].id
     network_virtual_appliance_id = azurerm_palo_alto_virtual_network_appliance.cloud_ngfw[each.key].id
-    egress_nat_ip_address_ids    = each.value.egress_nat_ip_address_ids
+    egress_nat_ip_address_ids    = length(each.value.egress_nat_ip_address_ids) > 0 ? each.value.egress_nat_ip_address_ids : null
     trusted_address_ranges       = each.value.trusted_address_ranges
   }
 
@@ -297,7 +297,7 @@ resource "azurerm_palo_alto_next_generation_firewall_virtual_hub_strata_cloud_ma
     public_ip_address_ids        = concat([azurerm_public_ip.palo_alto_cloud_ngfw[each.key].id], each.value.additional_public_ip_address_ids)
     virtual_hub_id               = azurerm_virtual_hub.main[each.key].id
     network_virtual_appliance_id = azurerm_palo_alto_virtual_network_appliance.cloud_ngfw[each.key].id
-    egress_nat_ip_address_ids    = each.value.egress_nat_ip_address_ids
+    egress_nat_ip_address_ids    = length(each.value.egress_nat_ip_address_ids) > 0 ? each.value.egress_nat_ip_address_ids : null
     trusted_address_ranges       = each.value.trusted_address_ranges
   }
 
